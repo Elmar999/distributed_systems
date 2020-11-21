@@ -74,67 +74,84 @@ try:
         return template('server/index.tpl', board_title='Vessel {}'.format(node_id),
                 board_dict=sorted({"0":board,}.iteritems()), members_name_string='YOUR NAME')
 
-    @app.get('/board')
+     @app.get('/board')
     def get_board():
-        global board, node_id
+        global board, node_id, delete_key
         print board
+        
+        '''
+        Deleting ID from board can be challenging, if there are 3 elements in board, and we delete second entry, board
+        will transform from keys -> 0, 1, 2 to 0, 2. However, we know that IDs should be sequential so in fact new keys were supposed to be 0, 1 even if we delete second entry. Thats why, we should always update IDs if we delete entry from the board. We then take a variable old_board whose keys are 0, 2 and we enumerate old_board. Then i variable will be 
+        0, 1 in this example. So new keys for the board dictionary will be 0, 1 with the respective values.
+        '''
+
+        old_board = board  
+        board = dict()
+        for i, keys in enumerate(old_board):
+            board[i] = old_board[keys]
+
+
         return template('server/boardcontents_template.tpl',board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()))
     
     #------------------------------------------------------------------------------------------------------
     
     # You NEED to change the follow functions
     @app.post('/board')
+    @app.post('/board')
     def client_add_received():
         '''Adds a new element to the board
         Called directly when a user is doing a POST request on /board'''
         global board, node_id
         try:
+            #get a new entry
             new_entry = request.forms.get('entry')
-
-            element_id = 1 # you need to generate a entry number
-            add_new_element_to_store(element_id, new_entry)
-
-            # you should propagate something
-            # Please use threads to avoid blocking
-            # thread = Thread(target=???,args=???)
-            # For example: thread = Thread(target=propagate_to_vessels, args=....)
-            # you should create the thread as a deamon with thread.daemon = True
-            # then call thread.start() to spawn the thread
-
-            # Propagate action to all other nodes example :
+            # new element ID will be the length of board. If we have IDs 0, 1, 2 in board new ID will be 3 which is 
+            # length of board. We create thread in order to propogate other vessels. We use thread,start() to spawn the
+            # thread. Post request /propogate/ADD/3 with the new entry. Post request will be describe in propogate_to_vessels 
+            # function.
+            element_id = len(board)
+            add_new_element_to_store(element_id, new_entry) 
             thread = Thread(target=propagate_to_vessels,
                             args=('/propagate/ADD/' + str(element_id), {'entry': new_entry}, 'POST'))
             thread.daemon = True
             thread.start()
-            return True
+
+            # return True
         except Exception as e:
             print e
-        return False
+        # return False
 
-    @app.post('/board/<element_id:int>/')
+     @app.post('/board/<element_id:int>/')
     def client_action_received(element_id):
-        global board, node_id
-        
-        print "You receive an element"
-        print "id is ", node_id
-        # Get the entry from the HTTP body
+
+        # take entry, will be needed in case of MODIFY.
         entry = request.forms.get('entry')
         
-        delete_option = request.forms.get('delete') 
-	    #0 = modify, 1 = delete
-	    
-        print "the delete option is ", delete_option
-        
-        #call either delete or modify
-        modify_element_in_store(element_id, entry, False)
-        
-        delete_element_from_store(element_id, False)
-        
-        #propage to other nodes
-        thread = Thread(target=propagate_to_vessels,
-                            args=('/propagate/DELETEorMODIFY/' + str(element_id), {'entry': entry}, 'POST'))
-        thread.daemon = True
-        thread.start()
+        ''' 
+        take option. After looking at other source codes, we found out that in the file of 
+        boardcontents_template.tpl, Modify and X buttons are submit buttons with the name "delete", 
+        Modify has the value 0 and delete has the value 1.
+        '''
+        option = request.forms.get('delete')
+
+        # if option is 0, means we want to modify element, then we use modify_element_in_store function
+        # with the new entry and element_id. We create a thread for propogation.
+        if option == '0':
+            modify_element_in_store(element_id, entry, False)
+            thread = Thread(target=propagate_to_vessels,
+                            args=('/propagate/MODIFY/' + str(element_id), {'entry': entry}, 'POST'))
+            thread.daemon = True
+            thread.start()
+
+        # if option is 1, means we want to delete element from board. Then we use delete_element_from_store to 
+        # delete entry from board. Then we create a thread to propogate to all vessels.
+        elif option == '1':
+            delete_element_from_store(element_id, False)
+            thread = Thread(target=propagate_to_vessels,
+                            args=('/propagate/DELETE/' + str(element_id), None, 'POST'))
+                            # we set daemon to True and thread.start to spawn the thread.
+            thread.daemon = True
+            thread.start()
 
     #With this function you handle requests from other nodes like add modify or delete
     @app.post('/propagate/<action>/<element_id>')
