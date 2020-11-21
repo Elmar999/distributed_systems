@@ -1,10 +1,4 @@
-# coding=utf-8
-# ------------------------------------------------------------------------------------------------------
-# TDA596 - Lab 1
-# server/server.py
-# Input: Node_ID total_number_of_ID
-# Student: John Doe
-# ------------------------------------------------------------------------------------------------------
+
 import traceback
 import sys
 import time
@@ -24,15 +18,16 @@ try:
 
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
-    # You will probably need to modify them
     # ------------------------------------------------------------------------------------------------------
     
     #This functions will add an new element
-    def add_new_element_to_store(entry_sequence, element, is_propagated_call=False):
+     def add_new_element_to_store(entry_sequence, element, is_propagated_call=False):
         global board, node_id
         success = False
         try:
+           #if element id is not in the board, we can add new element to the dictionary, with new ID, entry sequence.
            if entry_sequence not in board:
+               # assigning new entry element to new key value of dictionary.
                 board[entry_sequence] = element
                 success = True
         except Exception as e:
@@ -43,17 +38,26 @@ try:
         global board, node_id
         success = False
         try:
-            print("You need to implement the modify function")
+            '''
+            In order to modify element in the dictionary board, we take entry sequence(ID) which will be key
+            in the dictionary, and we assign new value to the key(ID) of dictionary. Now new entry will be modified_element
+            for corresponding key(ID).
+            ''' 
+            board[entry_sequence] = modified_element
+
             success = True
         except Exception as e:
             print e
         return success
 
     def delete_element_from_store(entry_sequence, is_propagated_call = False):
-        global board, node_id
+        global board, node_id, delete_key
         success = False
         try:
-            print("You need to implement the delete function")
+            
+            # We are deleting specific ID from dictionary.
+            del board[entry_sequence]
+            
             success = True
         except Exception as e:
             print e
@@ -64,7 +68,6 @@ try:
     # ------------------------------------------------------------------------------------------------------
     # a single example (index) for get, and one for post
     # ------------------------------------------------------------------------------------------------------
-    #No need to modify this
     @app.route('/')
     def index():
         global board, node_id
