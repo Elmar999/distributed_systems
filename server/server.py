@@ -103,6 +103,91 @@ try:
                 if not success:
                     print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
 
+
+
+    class Node:
+        def __init__(self, node_id, election=False, coordinator=False):
+            self.node_id = node_id
+            self.election = election
+            self.coordinator = coordinator
+
+
+    # electing a leader
+    def find_nodes(node):
+        '''
+        use Bully algo for leader election
+        node will find other nodes with higher ID.
+        '''
+        global vessel_list, server_list
+        # print(server_list)
+
+
+        for i in range(len(server_list)):
+            if server_list[i] == int(node):
+                # if it is the last index in the list, make the next vessel with index 0.
+                if i == len(server_list)-1:
+                    next_node_id = server_list[0]
+                else:     
+                    next_node_id = server_list[i+1]
+                # print("next node is :", next_node_id)
+                break
+        return next_node_id
+
+
+    def get_higher_nodes(starting_node):
+        # get details of higher nodes
+        global node_list
+        higher_nodes = list()
+        # check if there is already a coordinator in the network
+        for vessel_id, vessel_ip in vessel_list.items():
+            if int(vessel_id) != starting_node and int(vessel_id) > starting_node:
+                higher_nodes.append(int(vessel_id))
+        return higher_nodes
+
+
+    def check_coordinator(node_id):
+        global node_list
+        # check if there is already a coordinator in the network
+        for vessel_id, vessel_ip in vessel_list.items():
+            if int(vessel_id) != node_id:
+                if node_list[int(vessel_id)].coordinator == True:
+                    return False
+        return True
+
+    def elect_leader(starting_node):
+        # decide who will start election process
+        global server_list, node_id, node_list
+        # print(node_id)
+        # print(node_list[node_id].node_id)
+        # pass
+        if node_id in node_list and node_list[node_id].node_id == starting_node:
+            higher_nodes = get_higher_nodes(starting_node)
+            print(higher_nodes)
+            # starting node will start the election
+            # check if starting node is not coordinator and if there is a any coordinator in network 
+            if node_list[starting_node].coordinator == False and check_coordinator(starting_node):
+                print("there is no coordinator in the network")
+                # make node.election flag to True
+                node_list[starting_node].election = True
+
+        
+        
+        
+        
+            # node_list = server_list[node_id:]
+            
+            # for next_node in node_list:
+            #     success = contact_vessel('10.1.0.{}'.format(str(next_node)), '/send_election_msg', {}, 'GET')
+            #     # print(request.json)
+            #     if not success:
+            #         print "\n\nCould not contact vessel\n\n"
+
+
+        #     print(node_list)
+        #     elect_leader(node_list[0])
+        # print("salam")
+
+
     # ------------------------------------------------------------------------------------------------------
     # ROUTES
     # ------------------------------------------------------------------------------------------------------
@@ -215,54 +300,13 @@ try:
     def send_election_msg():
         return {"data":"test"}
        
-       
-    # electing a leader
-    def find_nodes(node):
-        '''
-        use Bully algo for leader election
-        node will find other nodes with higher ID.
-        '''
-        global vessel_list, server_list
-        # print(server_list)
+   
 
-
-        for i in range(len(server_list)):
-            if server_list[i] == int(node):
-                # if it is the last index in the list, make the next vessel with index 0.
-                if i == len(server_list)-1:
-                    next_node_id = server_list[0]
-                else:     
-                    next_node_id = server_list[i+1]
-                # print("next node is :", next_node_id)
-                break
-        return next_node_id
-
-
-    def elect_leader(starting_node):
-        # decide who will start election process
-        global server_list, node_id
-
-        # next_node = find_next_node(starting_node)
-        # print("node_list", node_list)
-        if node_id == starting_node:
-            node_list = server_list[node_id:]
-            
-            for next_node in node_list:
-                success = contact_vessel('10.1.0.{}'.format(str(next_node)), '/send_election_msg', {}, 'GET')
-                # print(request.json)
-                if not success:
-                    print "\n\nCould not contact vessel\n\n"
-
-
-        #     print(node_list)
-        #     elect_leader(node_list[0])
-        # print("salam")
-              
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
     # ------------------------------------------------------------------------------------------------------
     def main():
-        global vessel_list, node_id, app, server_list, nodes_list
+        global vessel_list, node_id, app, server_list, node_list
 
         port = 80
         parser = argparse.ArgumentParser(description='Your own implementation of the distributed blackboard')
@@ -271,8 +315,8 @@ try:
         args = parser.parse_args()
         node_id = args.nid
         vessel_list = dict()
+        node_list = dict()
         server_list = list()
-        nodes_list = list()
         # We need to write the other vessels IP, based on the knowledge of their number
         for i in range(1, args.nbv):
             vessel_list[str(i)] = '10.1.0.{}'.format(str(i))
@@ -280,10 +324,12 @@ try:
 
         for i, (vessel_id, vessel_ip) in enumerate(vessel_list.items()):
             server_list.append(int(vessel_id))
+            node_list[int(vessel_id)] = Node(int(vessel_id))
+        # print(node_list.keys())
         server_list = sorted(server_list)
-        # print(sorted(server_list))
 
-        starting_node = 5
+
+        starting_node = 3
         elect_leader(starting_node)
 
 
