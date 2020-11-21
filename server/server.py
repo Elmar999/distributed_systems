@@ -1,10 +1,20 @@
-
+# coding=utf-8
+# ------------------------------------------------------------------------------------------------------
+# TDA596 - Lab 1
+# server/server.py
+# Input: Node_ID total_number_of_ID
+# Student: Elmar Hajizada, Dennis Dubrefjord
+# ------------------------------------------------------------------------------------------------------
 import traceback
+import ast
 import sys
 import time
 import json
+import random
 import argparse
+from time import sleep
 from threading import Thread
+
 
 from bottle import Bottle, run, request, template
 import requests
@@ -15,13 +25,12 @@ try:
     #board stores all message on the system 
     board = {0 : "Welcome to Distributed Systems Course"} 
 
-
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
     # ------------------------------------------------------------------------------------------------------
     
     #This functions will add an new element
-     def add_new_element_to_store(entry_sequence, element, is_propagated_call=False):
+    def add_new_element_to_store(entry_sequence, element, is_propagated_call=False):
         global board, node_id
         success = False
         try:
@@ -64,6 +73,37 @@ try:
         return success
 
     # ------------------------------------------------------------------------------------------------------
+    # DISTRIBUTED COMMUNICATIONS FUNCTIONS
+    # ------------------------------------------------------------------------------------------------------
+    def contact_vessel(vessel_ip, path, payload=None, req='POST'):
+        # Try to contact another server (vessel) through a POST or GET, once
+        success = False
+        try:
+            if 'POST' in req:
+                res = requests.post('http://{}{}'.format(vessel_ip, path), data=payload)
+                print(res.text)
+            elif 'GET' in req:
+                res = requests.get('http://{}{}'.format(vessel_ip, path))
+                print(res.content)
+            else:
+                print 'Non implemented feature!'
+            # result is in res.text or res.json()
+            # print(res.text)
+            if res.status_code == 200:
+                success = True
+        except Exception as e:
+            print e
+        return success
+
+    def propagate_to_vessels(path, payload = None, req = 'POST'):
+        global vessel_list, node_id
+        for vessel_id, vessel_ip in vessel_list.items():
+            if int(vessel_id) != node_id: # don't propagate to yourself
+                success = contact_vessel(vessel_ip, path, payload, req)
+                if not success:
+                    print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
+
+    # ------------------------------------------------------------------------------------------------------
     # ROUTES
     # ------------------------------------------------------------------------------------------------------
     # a single example (index) for get, and one for post
@@ -72,9 +112,10 @@ try:
     def index():
         global board, node_id
         return template('server/index.tpl', board_title='Vessel {}'.format(node_id),
-                board_dict=sorted({"0":board,}.iteritems()), members_name_string='YOUR NAME')
+                board_dict=sorted({"0":board,}.iteritems()), members_name_string='Dennis Dubrefjord, Elmar Hajizada')
 
-     @app.get('/board')
+
+    @app.get('/board')
     def get_board():
         global board, node_id, delete_key
         print board
@@ -92,11 +133,7 @@ try:
 
 
         return template('server/boardcontents_template.tpl',board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()))
-    
-    #------------------------------------------------------------------------------------------------------
-    
-    # You NEED to change the follow functions
-    @app.post('/board')
+    # ------------------------------------------------------------------------------------------------------
     @app.post('/board')
     def client_add_received():
         '''Adds a new element to the board
@@ -121,7 +158,7 @@ try:
             print e
         # return False
 
-     @app.post('/board/<element_id:int>/')
+    @app.post('/board/<element_id:int>/')
     def client_action_received(element_id):
 
         # take entry, will be needed in case of MODIFY.
@@ -152,8 +189,12 @@ try:
                             # we set daemon to True and thread.start to spawn the thread.
             thread.daemon = True
             thread.start()
+           
+        
 
-     @app.post('/propagate/<action>/<element_id>')
+
+
+    @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):
         
         '''
@@ -170,42 +211,58 @@ try:
             modify_element_in_store(int(element_id), entry, True)
 
 
-    # ------------------------------------------------------------------------------------------------------
-    # DISTRIBUTED COMMUNICATIONS FUNCTIONS
-    # ------------------------------------------------------------------------------------------------------
-    def contact_vessel(vessel_ip, path, payload=None, req='POST'):
-        # Try to contact another server (vessel) through a POST or GET, once
-        success = False
-        try:
-            if 'POST' in req:
-                res = requests.post('http://{}{}'.format(vessel_ip, path), data=payload)
-            elif 'GET' in req:
-                res = requests.get('http://{}{}'.format(vessel_ip, path))
-            else:
-                print 'Non implemented feature!'
-            # result is in res.text or res.json()
-            print(res.text)
-            if res.status_code == 200:
-                success = True
-        except Exception as e:
-            print e
-        return success
+    @app.get('/send_election_msg')
+    def send_election_msg():
+        return {"data":"test"}
+       
+       
+    # electing a leader
+    def find_nodes(node):
+        '''
+        use Bully algo for leader election
+        node will find other nodes with higher ID.
+        '''
+        global vessel_list, server_list
+        # print(server_list)
 
-    def propagate_to_vessels(path, payload = None, req = 'POST'):
-        global vessel_list, node_id
 
-        for vessel_id, vessel_ip in vessel_list.items():
-            if int(vessel_id) != node_id: # don't propagate to yourself
-                success = contact_vessel(vessel_ip, path, payload, req)
+        for i in range(len(server_list)):
+            if server_list[i] == int(node):
+                # if it is the last index in the list, make the next vessel with index 0.
+                if i == len(server_list)-1:
+                    next_node_id = server_list[0]
+                else:     
+                    next_node_id = server_list[i+1]
+                # print("next node is :", next_node_id)
+                break
+        return next_node_id
+
+
+    def elect_leader(starting_node):
+        # decide who will start election process
+        global server_list, node_id
+
+        # next_node = find_next_node(starting_node)
+        # print("node_list", node_list)
+        if node_id == starting_node:
+            node_list = server_list[node_id:]
+            
+            for next_node in node_list:
+                success = contact_vessel('10.1.0.{}'.format(str(next_node)), '/send_election_msg', {}, 'GET')
+                # print(request.json)
                 if not success:
-                    print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
+                    print "\n\nCould not contact vessel\n\n"
 
-        
+
+        #     print(node_list)
+        #     elect_leader(node_list[0])
+        # print("salam")
+              
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
     # ------------------------------------------------------------------------------------------------------
     def main():
-        global vessel_list, node_id, app
+        global vessel_list, node_id, app, server_list, nodes_list
 
         port = 80
         parser = argparse.ArgumentParser(description='Your own implementation of the distributed blackboard')
@@ -214,9 +271,22 @@ try:
         args = parser.parse_args()
         node_id = args.nid
         vessel_list = dict()
+        server_list = list()
+        nodes_list = list()
         # We need to write the other vessels IP, based on the knowledge of their number
-        for i in range(1, args.nbv+1):
+        for i in range(1, args.nbv):
             vessel_list[str(i)] = '10.1.0.{}'.format(str(i))
+        
+
+        for i, (vessel_id, vessel_ip) in enumerate(vessel_list.items()):
+            server_list.append(int(vessel_id))
+        server_list = sorted(server_list)
+        # print(sorted(server_list))
+
+        starting_node = 5
+        elect_leader(starting_node)
+
+
 
         try:
             run(app, host=vessel_list[str(node_id)], port=port)
@@ -225,8 +295,6 @@ try:
     # ------------------------------------------------------------------------------------------------------
     if __name__ == '__main__':
         main()
-        
-        
 except Exception as e:
         traceback.print_exc()
         while True:
