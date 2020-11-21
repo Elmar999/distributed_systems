@@ -153,22 +153,21 @@ try:
             thread.daemon = True
             thread.start()
 
-    #With this function you handle requests from other nodes like add modify or delete
-    @app.post('/propagate/<action>/<element_id>')
+     @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):
-	    #get entry from http body
+        
+        '''
+        This post request is used for the propogation purposes, and we check action if we call this post request.
+        Actions can be add, delete or modify in this program. We should also cast element_id to the integer type. Because 
+        keys(IDs) of the board is in the type of integer and since we passed the element_id in string format to the post request, we need to cast it to int.
+        '''
         entry = request.forms.get('entry')
-        print "the action is", action
-        
-        # Handle requests
-        # for example action == "ADD":
-        #add_new_element_to_store(element_id, entry, True)
-        
-        # Modify the board entry 
-        #modify_element_in_store(element_id, entry, True)
-        
-        # Delete the entry from the board
-        #delete_element_from_store(element_id, True)
+        if action == "ADD":
+            add_new_element_to_store(int(element_id), entry, True)
+        elif action == "DELETE":
+            delete_element_from_store(int(element_id), True)
+        elif action == "MODIFY":
+            modify_element_in_store(int(element_id), entry, True)
 
 
     # ------------------------------------------------------------------------------------------------------
