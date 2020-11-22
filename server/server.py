@@ -78,13 +78,14 @@ try:
     def contact_vessel(vessel_ip, path, payload=None, req='POST'):
         # Try to contact another server (vessel) through a POST or GET, once
         success = False
+        res = None
         try:
             if 'POST' in req:
                 res = requests.post('http://{}{}'.format(vessel_ip, path), data=payload)
-                print(res.text)
+                # print(res.text)
             elif 'GET' in req:
                 res = requests.get('http://{}{}'.format(vessel_ip, path))
-                print(res.content)
+                # print(res.content)
             else:
                 print 'Non implemented feature!'
             # result is in res.text or res.json()
@@ -93,56 +94,49 @@ try:
                 success = True
         except Exception as e:
             print e
-        return success
+        return success, res
 
     def propagate_to_vessels(path, payload = None, req = 'POST'):
         global vessel_list, node_id
         for vessel_id, vessel_ip in vessel_list.items():
             if int(vessel_id) != node_id: # don't propagate to yourself
-                success = contact_vessel(vessel_ip, path, payload, req)
+                success, _ = contact_vessel(vessel_ip, path, payload, req)
                 if not success:
                     print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
 
 
 
+
+    #define election protocol
     class Node:
         def __init__(self, node_id, election=False, coordinator=False):
             self.node_id = node_id
             self.election = election
             self.coordinator = coordinator
-
-
-    # electing a leader
-    def find_nodes(node):
-        '''
-        use Bully algo for leader election
-        node will find other nodes with higher ID.
-        '''
-        global vessel_list, server_list
-        # print(server_list)
-
-
-        for i in range(len(server_list)):
-            if server_list[i] == int(node):
-                # if it is the last index in the list, make the next vessel with index 0.
-                if i == len(server_list)-1:
-                    next_node_id = server_list[0]
-                else:     
-                    next_node_id = server_list[i+1]
-                # print("next node is :", next_node_id)
-                break
-        return next_node_id
+            self.received_counter = 0
 
 
     def get_higher_nodes(starting_node):
         # get details of higher nodes
         global node_list
         higher_nodes = list()
-        # check if there is already a coordinator in the network
+        # check if higher node in the network is alive, then append it to list.
         for vessel_id, vessel_ip in vessel_list.items():
             if int(vessel_id) != starting_node and int(vessel_id) > starting_node:
-                higher_nodes.append(int(vessel_id))
+                success, response = contact_vessel('10.1.0.{}'.format((vessel_id)), '/check_alive', None, 'GET')
+                if success: 
+                    higher_nodes.append(int(vessel_id))
+                else:
+                    print("node is not alive: {}".format(int(vessel_id)))
         return higher_nodes
+
+
+    def election_msg(higher_nodes, node_id):
+        # send a msg to higher nodes, if there is any active higher node, then current node will not be coordinator
+        # move onto next higher node id
+
+        for node in higher_nodes:
+            success, response = contact_vessel('10.1.0.{}'.format(str(node)), '/send_election_msg', {"node_id":node_id}, 'POST')
 
 
     def check_coordinator(node_id):
@@ -154,39 +148,38 @@ try:
                     return False
         return True
 
+
+    def send_coordinator_msg(coordinator_id):
+        global vessel_list
+        for vessel_id, vessel_ip in vessel_list.items():
+            if int(vessel_id) != coordinator_id:
+                success, response = contact_vessel('10.1.0.{}'.format((vessel_id)), '/coordinator_msg', {"coordinator_id":coordinator_id}, 'POST')
+
+
+
     def elect_leader(starting_node):
         # decide who will start election process
         global server_list, node_id, node_list
-        # print(node_id)
-        # print(node_list[node_id].node_id)
-        # pass
+
         if node_id in node_list and node_list[node_id].node_id == starting_node:
             higher_nodes = get_higher_nodes(starting_node)
+            if len(higher_nodes) == 0:
+                print("I am the coordinator {}".format(node_id))
+                node_list[node_id].coordinator = True
+
             print(higher_nodes)
+            # print(node_list[starting_node].received_counter)
             # starting node will start the election
             # check if starting node is not coordinator and if there is a any coordinator in network 
             if node_list[starting_node].coordinator == False and check_coordinator(starting_node):
                 print("there is no coordinator in the network")
                 # make node.election flag to True
                 node_list[starting_node].election = True
-
+                election_msg(higher_nodes, starting_node)
+                print("returned")
         
-        
-        
-        
-            # node_list = server_list[node_id:]
-            
-            # for next_node in node_list:
-            #     success = contact_vessel('10.1.0.{}'.format(str(next_node)), '/send_election_msg', {}, 'GET')
-            #     # print(request.json)
-            #     if not success:
-            #         print "\n\nCould not contact vessel\n\n"
 
-
-        #     print(node_list)
-        #     elect_leader(node_list[0])
-        # print("salam")
-
+    # send_coordinator_msg(node_id)
 
     # ------------------------------------------------------------------------------------------------------
     # ROUTES
@@ -275,13 +268,8 @@ try:
             thread.daemon = True
             thread.start()
            
-        
-
-
-
     @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):
-        
         '''
         This post request is used for the propogation purposes, and we check action if we call this post request.
         Actions can be add, delete or modify in this program. We should also cast element_id to the integer type. Because 
@@ -296,9 +284,28 @@ try:
             modify_element_in_store(int(element_id), entry, True)
 
 
-    @app.get('/send_election_msg')
+    @app.post('/send_election_msg')
     def send_election_msg():
-        return {"data":"test"}
+        global node_id
+        # # higher node will receive election msg
+        # # it needs to start a new election process 
+
+        node_list[node_id].received_counter += 1
+        if node_list[node_id].received_counter == 1:
+            elect_leader(node_id)
+
+        return {"request": 200}
+
+    @app.post('/coordinator_msg')
+    def coordinator_msg():
+        # send coordinator id to all vessels
+        coordinator_id = request.forms.get("coordinator_id")
+        print(coordinator_id)
+
+
+    @app.get('/check_alive')
+    def check_alive():
+        return {"response": 200}
        
    
 
@@ -331,6 +338,17 @@ try:
 
         starting_node = 3
         elect_leader(starting_node)
+
+        print("ela")
+        for vessel_id, vessel_ip in vessel_list.items():
+            if node_list[int(vessel_id)].coordinator == True:
+                send_coordinator_msg(int(vessel_id))
+                break
+            
+                
+
+
+
 
 
 
