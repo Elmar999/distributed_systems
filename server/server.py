@@ -114,6 +114,7 @@ try:
             self.election = election
             self.coordinator = coordinator
             self.received_counter = 0
+            self.coordinator_id = None
 
 
     def get_higher_nodes(starting_node):
@@ -139,13 +140,12 @@ try:
             success, response = contact_vessel('10.1.0.{}'.format(str(node)), '/send_election_msg', {"node_id":node_id}, 'POST')
 
 
-    def check_coordinator(node_id):
+    def check_coordinator():
         global node_list
         # check if there is already a coordinator in the network
         for vessel_id, vessel_ip in vessel_list.items():
-            if int(vessel_id) != node_id:
-                if node_list[int(vessel_id)].coordinator == True:
-                    return False
+            if node_list[int(vessel_id)].coordinator == True:
+                return False
         return True
 
 
@@ -166,18 +166,28 @@ try:
             if len(higher_nodes) == 0:
                 print("I am the coordinator {}".format(node_id))
                 node_list[node_id].coordinator = True
+                send_coordinator_msg(node_id)
+                return
 
             print(higher_nodes)
             # print(node_list[starting_node].received_counter)
             # starting node will start the election
             # check if starting node is not coordinator and if there is a any coordinator in network 
-            if node_list[starting_node].coordinator == False and check_coordinator(starting_node):
-                print("there is no coordinator in the network")
+            if check_coordinator():
                 # make node.election flag to True
                 node_list[starting_node].election = True
                 election_msg(higher_nodes, starting_node)
                 print("returned")
+
+            
+
         
+        
+
+        # while check_coordinator():
+        #     print("no coordinator")
+
+
 
     # send_coordinator_msg(node_id)
 
@@ -195,7 +205,7 @@ try:
 
     @app.get('/board')
     def get_board():
-        global board, node_id, delete_key
+        global board, node_id, node_list
         print board
         
         '''
@@ -292,15 +302,21 @@ try:
 
         node_list[node_id].received_counter += 1
         if node_list[node_id].received_counter == 1:
-            elect_leader(node_id)
+           thread = Thread(target = elect_leader, args=(node_id,))
+           thread.daemon = True
+           thread.start()
 
-        return {"request": 200}
+        return {"response": 200}
 
     @app.post('/coordinator_msg')
     def coordinator_msg():
+        global node_id, node_list
         # send coordinator id to all vessels
         coordinator_id = request.forms.get("coordinator_id")
-        print(coordinator_id)
+        node_list[node_id].coordinator_id = coordinator_id
+        print("coordinator_id of node {} = {}".format(node_id, node_list[node_id].coordinator_id))  
+
+        return {"response": 200}
 
 
     @app.get('/check_alive')
@@ -339,12 +355,14 @@ try:
         starting_node = 3
         elect_leader(starting_node)
 
-        print("ela")
-        for vessel_id, vessel_ip in vessel_list.items():
-            if node_list[int(vessel_id)].coordinator == True:
-                send_coordinator_msg(int(vessel_id))
-                break
-            
+        # key = 0
+        # while(key == 0):
+        #     for vessel_id, vessel_ip in vessel_list.items():
+        #         if node_list[int(vessel_id)].coordinator == True:
+        #             send_coordinator_msg(int(vessel_id))
+        #             key = 1
+        #             break
+                
                 
 
 
