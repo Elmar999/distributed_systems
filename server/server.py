@@ -52,7 +52,7 @@ try:
             in the dictionary, and we assign new value to the key(ID) of dictionary. Now new entry will be modified_element
             for corresponding key(ID).
             ''' 
-            board[entry_sequence] = modified_element
+            board[int(entry_sequence)] = modified_element
 
             success = True
         except Exception as e:
@@ -65,7 +65,12 @@ try:
         try:
             
             # We are deleting specific ID from dictionary.
-            del board[entry_sequence]
+            del board[int(entry_sequence)]
+
+            old_board = board  
+            board = dict()
+            for i, keys in enumerate(old_board):
+                board[i] = old_board[keys]
             
             success = True
         except Exception as e:
@@ -166,31 +171,21 @@ try:
             if len(higher_nodes) == 0:
                 print("I am the coordinator {}".format(node_id))
                 node_list[node_id].coordinator = True
+                node_list[node_id].coordinator_id = node_id
                 send_coordinator_msg(node_id)
+                print("Election process finished")
                 return
 
             print(higher_nodes)
             # print(node_list[starting_node].received_counter)
             # starting node will start the election
-            # check if starting node is not coordinator and if there is a any coordinator in network 
+            # if there is a not any coordinator in network 
             if check_coordinator():
                 # make node.election flag to True
                 node_list[starting_node].election = True
                 election_msg(higher_nodes, starting_node)
-                print("returned")
 
             
-
-        
-        
-
-        # while check_coordinator():
-        #     print("no coordinator")
-
-
-
-    # send_coordinator_msg(node_id)
-
     # ------------------------------------------------------------------------------------------------------
     # ROUTES
     # ------------------------------------------------------------------------------------------------------
@@ -214,70 +209,89 @@ try:
         0, 1 in this example. So new keys for the board dictionary will be 0, 1 with the respective values.
         '''
 
-        old_board = board  
-        board = dict()
-        for i, keys in enumerate(old_board):
-            board[i] = old_board[keys]
-
-
         return template('server/boardcontents_template.tpl',board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()))
     # ------------------------------------------------------------------------------------------------------
     @app.post('/board')
     def client_add_received():
         '''Adds a new element to the board
         Called directly when a user is doing a POST request on /board'''
-        global board, node_id
+        global board, node_id, node_list
         try:
-            #get a new entry
-            new_entry = request.forms.get('entry')
-            # new element ID will be the length of board. If we have IDs 0, 1, 2 in board new ID will be 3 which is 
-            # length of board. We create thread in order to propogate other vessels. We use thread,start() to spawn the
-            # thread. Post request /propogate/ADD/3 with the new entry. Post request will be describe in propogate_to_vessels 
-            # function.
-            element_id = len(board)
-            add_new_element_to_store(element_id, new_entry) 
-            thread = Thread(target=propagate_to_vessels,
-                            args=('/propagate/ADD/' + str(element_id), {'entry': new_entry}, 'POST'))
-            thread.daemon = True
-            thread.start()
+            coordinator_id = node_list[node_id].coordinator_id
+            
+            if node_id == coordinator_id:
+                #get a new entry
+                # new element ID will be the length of board. If we have IDs 0, 1, 2 in board new ID will be 3 which is 
+                # length of board. We create thread in order to propogate other vessels. We use thread,start() to spawn the
+                # thread. Post request /propogate/ADD/3 with the new entry. Post request will be describe in propogate_to_vessels 
+                # function.
+
+                new_entry = request.forms.get('new_entry')
+                element_id = len(board)
+                add_new_element_to_store(element_id, new_entry) 
+                thread = Thread(target=propagate_to_vessels,
+                                args=('/propagate/ADD/' + str(element_id), {'entry': new_entry}, 'POST'))
+                thread.daemon = True
+                thread.start()
+            else:
+                # contact to coordinator node, coordinator node will handle the request
+                new_entry = request.forms.get('entry')
+                success, response = contact_vessel('10.1.0.{}'.format((str(coordinator_id))), '/board', {'new_entry': new_entry}, 'POST')
+            
+                
 
             # return True
         except Exception as e:
             print e
         # return False
 
-    @app.post('/board/<element_id:int>/')
+    @app.post('/board/<element_id>/')
     def client_action_received(element_id):
+        global node_id, node_list
+        # print(type(element_id))
 
-        # take entry, will be needed in case of MODIFY.
-        entry = request.forms.get('entry')
-        
         ''' 
         take option. After looking at other source codes, we found out that in the file of 
         boardcontents_template.tpl, Modify and X buttons are submit buttons with the name "delete", 
         Modify has the value 0 and delete has the value 1.
         '''
-        option = request.forms.get('delete')
+       
+        coordinator_id = node_list[node_id].coordinator_id
+        if node_id == coordinator_id:
+            # if option is 0, means we want to modify element, then we use modify_element_in_store function
+            # with the new entry and element_id. We create a thread for propogation.
+            entry = request.forms.get('entry')
+            option = request.forms.get("delete")
 
-        # if option is 0, means we want to modify element, then we use modify_element_in_store function
-        # with the new entry and element_id. We create a thread for propogation.
-        if option == '0':
-            modify_element_in_store(element_id, entry, False)
-            thread = Thread(target=propagate_to_vessels,
-                            args=('/propagate/MODIFY/' + str(element_id), {'entry': entry}, 'POST'))
-            thread.daemon = True
-            thread.start()
+            if option == '0':
+                modify_element_in_store(element_id, entry, False)
+                thread = Thread(target=propagate_to_vessels,
+                                args=('/propagate/MODIFY/' + (element_id), {'entry': entry}, 'POST'))
+                thread.daemon = True
+                thread.start()
 
-        # if option is 1, means we want to delete element from board. Then we use delete_element_from_store to 
-        # delete entry from board. Then we create a thread to propogate to all vessels.
-        elif option == '1':
-            delete_element_from_store(element_id, False)
-            thread = Thread(target=propagate_to_vessels,
-                            args=('/propagate/DELETE/' + str(element_id), None, 'POST'))
-                            # we set daemon to True and thread.start to spawn the thread.
-            thread.daemon = True
-            thread.start()
-           
+            # if option is 1, means we want to delete element from board. Then we use delete_element_from_store to 
+            # delete entry from board. Then we create a thread to propogate to all vessels.
+            elif option == '1':
+                delete_element_from_store(element_id, False)
+                thread = Thread(target=propagate_to_vessels,
+                                args=('/propagate/DELETE/' + (element_id), None, 'POST'))
+                                # we set daemon to True and thread.start to spawn the thread.
+                thread.daemon = True
+                thread.start()
+        else:
+            # take entry, will be needed in case of MODIFY.
+            entry = request.forms.get('entry')
+            option = request.forms.get('delete')
+            # contact to coordinator
+            success, response = contact_vessel('10.1.0.{}'.format((str(coordinator_id))), '/board/{}/'.format(element_id), {'entry': entry, "delete": option}, 'POST')
+
+
+
+
+
+        
+
     @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):
         '''
@@ -354,20 +368,6 @@ try:
 
         starting_node = 3
         elect_leader(starting_node)
-
-        # key = 0
-        # while(key == 0):
-        #     for vessel_id, vessel_ip in vessel_list.items():
-        #         if node_list[int(vessel_id)].coordinator == True:
-        #             send_coordinator_msg(int(vessel_id))
-        #             key = 1
-        #             break
-                
-                
-
-
-
-
 
 
         try:
