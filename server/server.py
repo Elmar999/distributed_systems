@@ -67,11 +67,6 @@ try:
             # We are deleting specific ID from dictionary.
             del board[int(entry_sequence)]
 
-            old_board = board  
-            board = dict()
-            for i, keys in enumerate(old_board):
-                board[i] = old_board[keys]
-            
             success = True
         except Exception as e:
             print e
@@ -140,7 +135,6 @@ try:
     def election_msg(higher_nodes, node_id):
         # send a msg to higher nodes, if there is any active higher node, then current node will not be coordinator
         # move onto next higher node id
-
         for node in higher_nodes:
             success, response = contact_vessel('10.1.0.{}'.format(str(node)), '/send_election_msg', {"node_id":node_id}, 'POST')
 
@@ -227,7 +221,10 @@ try:
                 # function.
 
                 new_entry = request.forms.get('new_entry')
-                element_id = len(board)
+
+                # generate new ID
+                element_id = max(board, key=int) + 1
+
                 add_new_element_to_store(element_id, new_entry) 
                 thread = Thread(target=propagate_to_vessels,
                                 args=('/propagate/ADD/' + str(element_id), {'entry': new_entry}, 'POST'))
