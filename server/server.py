@@ -109,12 +109,18 @@ try:
 
     #define election protocol
     class Node:
-        def __init__(self, node_id, election=False, coordinator=False):
+        def __init__(self, node_id, election=False, coordinator=False, counter=0):
             self.node_id = node_id
             self.election = election
             self.coordinator = coordinator
-            self.received_counter = 0
+            self.received_counter = counter
             self.coordinator_id = None
+
+
+    def init_nodes(node_list):
+        for node in node_list:
+            node_list[node] = Node(node)
+        return node_list
 
 
     def get_higher_nodes(starting_node):
@@ -125,7 +131,7 @@ try:
         for vessel_id, vessel_ip in vessel_list.items():
             if int(vessel_id) != starting_node and int(vessel_id) > starting_node:
                 success, response = contact_vessel('10.1.0.{}'.format((vessel_id)), '/check_alive', None, 'GET')
-                if success: 
+                if success:
                     higher_nodes.append(int(vessel_id))
                 else:
                     print("node is not alive: {}".format(int(vessel_id)))
@@ -135,24 +141,43 @@ try:
     def election_msg(higher_nodes, node_id):
         # send a msg to higher nodes, if there is any active higher node, then current node will not be coordinator
         # move onto next higher node id
+        print("higher nodes are:{} ".format(higher_nodes))
         for node in higher_nodes:
             success, response = contact_vessel('10.1.0.{}'.format(str(node)), '/send_election_msg', {"node_id":node_id}, 'POST')
 
 
     def check_coordinator():
+        #check if there is a coordinator in the network
+
         global node_list
         # check if there is already a coordinator in the network
-        for vessel_id, vessel_ip in vessel_list.items():
-            if node_list[int(vessel_id)].coordinator == True:
+        for node in node_list:
+            if node_list[node].coordinator == True:
                 return False
         return True
 
+    def check_election():
+        global node_list
+        for node in node_list:
+            if node_list[node].election == True:
+                return False
+        return True
+
+    def check_coordinator_node():
+        global node_id, node_list
+        coordinator_id = node_list[node_id].coordinator_id
+        if node_id != coordinator_id and check_election():
+            success, response = contact_vessel('10.1.0.{}'.format((coordinator_id)), '/check_alive', None, 'GET')
+            if success == False:
+                node_list[node_id].election = True
+                elect_leader(node_id) 
+
 
     def send_coordinator_msg(coordinator_id):
-        global vessel_list
-        for vessel_id, vessel_ip in vessel_list.items():
-            if int(vessel_id) != coordinator_id:
-                success, response = contact_vessel('10.1.0.{}'.format((vessel_id)), '/coordinator_msg', {"coordinator_id":coordinator_id}, 'POST')
+        global node_list
+        for node in node_list:
+            if node != coordinator_id:
+                success, response = contact_vessel('10.1.0.{}'.format((node)), '/coordinator_msg', {"coordinator_id":coordinator_id}, 'POST')
 
 
 
@@ -170,8 +195,6 @@ try:
                 print("Election process finished")
                 return
 
-            print(higher_nodes)
-            # print(node_list[starting_node].received_counter)
             # starting node will start the election
             # if there is a not any coordinator in network 
             if check_coordinator():
@@ -197,6 +220,8 @@ try:
         global board, node_id, node_list
         print board
         
+        # check_coordinator_node()
+
         '''
         Deleting ID from board can be challenging, if there are 3 elements in board, and we delete second entry, board
         will transform from keys -> 0, 1, 2 to 0, 2. However, we know that IDs should be sequential so in fact new keys were supposed to be 0, 1 even if we delete second entry. Thats why, we should always update IDs if we delete entry from the board. We then take a variable old_board whose keys are 0, 2 and we enumerate old_board. Then i variable will be 
@@ -211,8 +236,8 @@ try:
         Called directly when a user is doing a POST request on /board'''
         global board, node_id, node_list
         try:
+            attempt = 1
             coordinator_id = node_list[node_id].coordinator_id
-            
             if node_id == coordinator_id:
                 #get a new entry
                 # new element ID will be the length of board. If we have IDs 0, 1, 2 in board new ID will be 3 which is 
@@ -233,10 +258,25 @@ try:
             else:
                 # contact to coordinator node, coordinator node will handle the request
                 new_entry = request.forms.get('entry')
+                print("first attempt")
+                attempt += 1
                 success, response = contact_vessel('10.1.0.{}'.format((str(coordinator_id))), '/board', {'new_entry': new_entry}, 'POST')
-            
-                
 
+                if success == False:
+                    # wait for coordinator only for 2nd attempt, otherwise it means coordinator is down.
+                    if attempt == 2:
+                        print("second attempt")
+                        sleep(5)
+                        success, response = contact_vessel('10.1.0.{}'.format((str(coordinator_id))), '/board', {'new_entry': new_entry}, 'POST')
+                        if success == False:
+                            print("coordinator is down")
+                            del node_list[int(coordinator_id)]
+                            # # init all nodes again
+                            node_list = init_nodes(node_list)
+                            # # launch a new election process
+                            elect_leader(node_id)
+
+            
             # return True
         except Exception as e:
             print e
@@ -252,7 +292,7 @@ try:
         boardcontents_template.tpl, Modify and X buttons are submit buttons with the name "delete", 
         Modify has the value 0 and delete has the value 1.
         '''
-       
+        attempt = 1
         coordinator_id = node_list[node_id].coordinator_id
         if node_id == coordinator_id:
             # if option is 0, means we want to modify element, then we use modify_element_in_store function
@@ -281,8 +321,20 @@ try:
             entry = request.forms.get('entry')
             option = request.forms.get('delete')
             # contact to coordinator
+               
+            print("first attempt")
+            attempt += 1
             success, response = contact_vessel('10.1.0.{}'.format((str(coordinator_id))), '/board/{}/'.format(element_id), {'entry': entry, "delete": option}, 'POST')
-
+                
+            # if coordinator does not respond back
+            if success == False:
+                # wait for coordinator only for 2nd attempt, otherwise it means coordinator is down.
+                if attempt == 2:
+                    print("second attempt")
+                    sleep(10)
+                    success, response = contact_vessel('10.1.0.{}'.format((str(coordinator_id))), '/board/{}/'.format(element_id), {'entry': entry, "delete": option}, 'POST')
+                    if success == False:
+                        print("coordinator is down")
 
 
 
@@ -307,21 +359,25 @@ try:
 
     @app.post('/send_election_msg')
     def send_election_msg():
-        global node_id
+        global node_id, node_list
         # # higher node will receive election msg
         # # it needs to start a new election process 
-
+        print("received counter (send_election) is {}".format(node_list[node_id].received_counter))
         node_list[node_id].received_counter += 1
         if node_list[node_id].received_counter == 1:
-           thread = Thread(target = elect_leader, args=(node_id,))
-           thread.daemon = True
-           thread.start()
+            print("received_counter")
+            thread = Thread(target = elect_leader, args=(node_id,))
+            thread.daemon = True
+            thread.start()
 
         return {"response": 200}
 
     @app.post('/coordinator_msg')
     def coordinator_msg():
         global node_id, node_list
+        node_list[node_id].received_counter = 0
+        print("received counter is {}".format(node_list[node_id].received_counter))
+
         # send coordinator id to all vessels
         coordinator_id = request.forms.get("coordinator_id")
         node_list[node_id].coordinator_id = coordinator_id
@@ -363,7 +419,7 @@ try:
         server_list = sorted(server_list)
 
 
-        starting_node = 3
+        starting_node = 2
         elect_leader(starting_node)
 
 
