@@ -130,6 +130,7 @@ try:
         # check if higher node in the network is alive, then append it to list.
         for vessel_id, vessel_ip in vessel_list.items():
             if int(vessel_id) != starting_node and int(vessel_id) > starting_node:
+
                 success, response = contact_vessel('10.1.0.{}'.format((vessel_id)), '/check_alive', None, 'GET')
                 if success:
                     higher_nodes.append(int(vessel_id))
@@ -156,17 +157,12 @@ try:
                 return False
         return True
 
-    def check_election():
-        global node_list
-        for node in node_list:
-            if node_list[node].election == True:
-                return False
-        return True
 
-    def check_coordinator_node():
+    def check_coordinator_node(node_number):
+        # one of the nodes will check coordinator id, if it is not alive then run election process again.
         global node_id, node_list
         coordinator_id = node_list[node_id].coordinator_id
-        if node_id != coordinator_id and check_election():
+        if node_id != coordinator_id and node_id == node_number:
             success, response = contact_vessel('10.1.0.{}'.format((coordinator_id)), '/check_alive', None, 'GET')
             if success == False:
                 node_list[node_id].election = True
@@ -211,23 +207,26 @@ try:
     @app.route('/')
     def index():
         global board, node_id
+
+        print("board")
         return template('server/index.tpl', board_title='Vessel {}'.format(node_id),
                 board_dict=sorted({"0":board,}.iteritems()), members_name_string='Dennis Dubrefjord, Elmar Hajizada')
 
 
     @app.get('/board')
     def get_board():
-        global board, node_id, node_list
+        global board, node_id, node_list, seed_number
         print board
         
-        # check_coordinator_node()
-
-        '''
-        Deleting ID from board can be challenging, if there are 3 elements in board, and we delete second entry, board
-        will transform from keys -> 0, 1, 2 to 0, 2. However, we know that IDs should be sequential so in fact new keys were supposed to be 0, 1 even if we delete second entry. Thats why, we should always update IDs if we delete entry from the board. We then take a variable old_board whose keys are 0, 2 and we enumerate old_board. Then i variable will be 
-        0, 1 in this example. So new keys for the board dictionary will be 0, 1 with the respective values.
-        '''
-
+        random.seed(seed_number)
+        
+        # if  node_list:
+            # print(node_list)
+        node_number = random.choice(list(node_list.keys()))
+        check_coordinator_node(node_number)
+        seed_number += 1
+        node_list[node_id].received_counter = 0
+    
         return template('server/boardcontents_template.tpl',board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()))
     # ------------------------------------------------------------------------------------------------------
     @app.post('/board')
@@ -242,11 +241,9 @@ try:
                 #get a new entry
                 # new element ID will be the length of board. If we have IDs 0, 1, 2 in board new ID will be 3 which is 
                 # length of board. We create thread in order to propogate other vessels. We use thread,start() to spawn the
-                # thread. Post request /propogate/ADD/3 with the new entry. Post request will be describe in propogate_to_vessels 
-                # function.
+                # thread. Post request /propogate/ADD/3 with the new entry. Post request will be describe in propogate_to_vessels function.
 
-                new_entry = request.forms.get('new_entry')
-
+                new_entry = request.forms.get('entry')
                 # generate new ID
                 element_id = max(board, key=int) + 1
 
@@ -258,24 +255,8 @@ try:
             else:
                 # contact to coordinator node, coordinator node will handle the request
                 new_entry = request.forms.get('entry')
-                print("first attempt")
-                attempt += 1
-                success, response = contact_vessel('10.1.0.{}'.format((str(coordinator_id))), '/board', {'new_entry': new_entry}, 'POST')
-
-                if success == False:
-                    # wait for coordinator only for 2nd attempt, otherwise it means coordinator is down.
-                    if attempt == 2:
-                        print("second attempt")
-                        sleep(5)
-                        success, response = contact_vessel('10.1.0.{}'.format((str(coordinator_id))), '/board', {'new_entry': new_entry}, 'POST')
-                        if success == False:
-                            print("coordinator is down")
-                            del node_list[int(coordinator_id)]
-                            # # init all nodes again
-                            node_list = init_nodes(node_list)
-                            # # launch a new election process
-                            elect_leader(node_id)
-
+                success, response = contact_vessel('10.1.0.{}'.format((str(coordinator_id))), '/board', {'entry': new_entry}, 'POST')
+                            
             
             # return True
         except Exception as e:
@@ -321,20 +302,8 @@ try:
             entry = request.forms.get('entry')
             option = request.forms.get('delete')
             # contact to coordinator
-               
-            print("first attempt")
-            attempt += 1
             success, response = contact_vessel('10.1.0.{}'.format((str(coordinator_id))), '/board/{}/'.format(element_id), {'entry': entry, "delete": option}, 'POST')
-                
-            # if coordinator does not respond back
-            if success == False:
-                # wait for coordinator only for 2nd attempt, otherwise it means coordinator is down.
-                if attempt == 2:
-                    print("second attempt")
-                    sleep(10)
-                    success, response = contact_vessel('10.1.0.{}'.format((str(coordinator_id))), '/board/{}/'.format(element_id), {'entry': entry, "delete": option}, 'POST')
-                    if success == False:
-                        print("coordinator is down")
+            
 
 
 
@@ -362,10 +331,8 @@ try:
         global node_id, node_list
         # # higher node will receive election msg
         # # it needs to start a new election process 
-        print("received counter (send_election) is {}".format(node_list[node_id].received_counter))
         node_list[node_id].received_counter += 1
-        if node_list[node_id].received_counter == 1:
-            print("received_counter")
+        if node_list[node_id].received_counter == 1 and node_list[node_id].coordinator == False:
             thread = Thread(target = elect_leader, args=(node_id,))
             thread.daemon = True
             thread.start()
@@ -376,7 +343,7 @@ try:
     def coordinator_msg():
         global node_id, node_list
         node_list[node_id].received_counter = 0
-        print("received counter is {}".format(node_list[node_id].received_counter))
+        # print("received counter is {}".format(node_list[node_id].received_counter))
 
         # send coordinator id to all vessels
         coordinator_id = request.forms.get("coordinator_id")
@@ -396,7 +363,7 @@ try:
     # EXECUTION
     # ------------------------------------------------------------------------------------------------------
     def main():
-        global vessel_list, node_id, app, server_list, node_list
+        global vessel_list, node_id, app, node_list, seed_number
 
         port = 80
         parser = argparse.ArgumentParser(description='Your own implementation of the distributed blackboard')
@@ -406,20 +373,16 @@ try:
         node_id = args.nid
         vessel_list = dict()
         node_list = dict()
-        server_list = list()
+        seed_number = 1
+
         # We need to write the other vessels IP, based on the knowledge of their number
         for i in range(1, args.nbv):
             vessel_list[str(i)] = '10.1.0.{}'.format(str(i))
-        
-
+         
         for i, (vessel_id, vessel_ip) in enumerate(vessel_list.items()):
-            server_list.append(int(vessel_id))
             node_list[int(vessel_id)] = Node(int(vessel_id))
-        # print(node_list.keys())
-        server_list = sorted(server_list)
 
-
-        starting_node = 2
+        starting_node = random.randint(1, len(vessel_list))
         elect_leader(starting_node)
 
 
