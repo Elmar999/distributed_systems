@@ -1,0 +1,7 @@
+The nodes need to be consistent to the end, there is no time limit. But to the end they need to be consistent (after some optimal period of time). 
+So we have several boards, some of them produce the events and propagate the events. Other nodes should receive the events, but they need to display everything in the right order. I mean the order of all events need to be the same to the end. 
+
+For example, if node 1 and node 2 publish something (let us say messages m1 and m2 respectively), and let us say that node 1 directly displays its own message (m1) to its board. Node 2 do the same, it displays its own message as well, which is m2. Then, both of them propagate to each other. Your task is to write the program so that the order will be the same after the receiving of the messages. With this I mean that  either node 1 and node 2 will display the messages in the order: m1, m2 or m2, m1. 
+With that is said that you either change the order of messages at one node after receiving an external event, so that you first publish incoming messages and then the nodes messages, or you publish first the nodes messages and then the received messages.  
+
+What I did was simply did the preference to the node with higher ID to be published first if the messages were produced at the same time.

@@ -245,7 +245,10 @@ try:
 
                 new_entry = request.forms.get('entry')
                 # generate new ID
-                element_id = max(board, key=int) + 1
+                if len(board) == 0:
+                    element_id = 0
+                else:
+                    element_id = max(board, key=int) + 1
 
                 add_new_element_to_store(element_id, new_entry) 
                 thread = Thread(target=propagate_to_vessels,

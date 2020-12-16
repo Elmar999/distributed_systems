@@ -109,6 +109,21 @@ try:
                     print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
 
 
+    def handle_requests(queue):
+        '''
+        each path in this queue are in the format of '/propagate/<action>/<element_id>/entry'.
+        We split the paths, in order to check if the request is ADD, MODIFY or DELETE. 
+        '''        
+        print(queue)
+        for req in queue:
+            action, _id, received_id, entry = req.split('/')[2], req.split('/')[3], req.split('/')[4], req.split('/')[5]
+            # print(action, _id, entry)
+            if action == "ADD":
+                add_new_element_to_store(float(_id + received_id), entry)
+            elif action == "DELETE":
+                delete_element_from_store(float(_id))
+            elif action == "MODIFY":
+                modify_element_in_store(float(_id), entry)
 
     # ------------------------------------------------------------------------------------------------------
     # ROUTES
@@ -124,9 +139,9 @@ try:
 
     @app.get('/board')
     def get_board():
-        global board, node_id, delete_key
+        global board, node_id, delete_key, queue, count
         # print board
-        
+
         return template('server/boardcontents_template.tpl',board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()))
     # ------------------------------------------------------------------------------------------------------
     @app.post('/board')
@@ -162,7 +177,7 @@ try:
             print e
         # return False
 
-    @app.post('/board/<element_id:int>/')
+    @app.post('/board/<element_id>/')
     def client_action_received(element_id):
         global local_clock
         # take entry, will be needed in case of MODIFY.
@@ -179,11 +194,12 @@ try:
         option = request.forms.get('delete')
 
         # print("local clock = {}".format(local_clock))
+        print("my element id is", element_id)
 
         # if option is 0, means we want to modify element, then we use modify_element_in_store function
         # with the new entry and element_id. We create a thread for propogation.
         if option == '0':
-            modify_element_in_store(element_id, entry, False)
+            modify_element_in_store(float(element_id), entry, False)
             thread = Thread(target=propagate_to_vessels,
                             args=('/propagate/MODIFY/' + str(element_id), {'entry': entry, 'clock':local_clock, 'id': node_id}, 'POST'))
             thread.daemon = True
@@ -192,7 +208,7 @@ try:
         # if option is 1, means we want to delete element from board. Then we use delete_element_from_store to 
         # delete entry from board. Then we create a thread to propogate to all vessels.
         elif option == '1':
-            delete_element_from_store(element_id, False)
+            delete_element_from_store(float(element_id), False)
             thread = Thread(target=propagate_to_vessels,
                             args=('/propagate/DELETE/' + str(element_id), {'clock': local_clock, 'id': node_id}, 'POST'))
                             # we set daemon to True and thread.start to spawn the thread.
@@ -212,19 +228,20 @@ try:
         # update clock with max(local_clock, received_clock) + 1
         received_clock = request.forms.get('clock')
         received_id = request.forms.get('id')
-        print(request.fullpath)
+        # print(request.fullpath)
         
         local_clock = max(local_clock, int(received_clock)) + 1
 
         # print("local clock = {} and received clock = {}".format(local_clock, received_clock))
         
         entry = request.forms.get('entry')
+        # queue.append(request.fullpath + "/.{}".format(received_id) + "/{}".format(entry))
         if action == "ADD":
             add_new_element_to_store(float(element_id) + float(received_id)/10, entry, True)
         elif action == "DELETE":
-            delete_element_from_store(float(element_id) + float(received_id)/10, True)
+            delete_element_from_store(float(element_id), True)
         elif action == "MODIFY":
-            modify_element_in_store(float(element_id) + float(received_id)/10, entry, True)
+            modify_element_in_store(float(element_id), entry, True)
 
               
 
