@@ -1,10 +1,3 @@
-# coding=utf-8
-# ------------------------------------------------------------------------------------------------------
-# TDA596 - Lab 1
-# server/server.py
-# Input: Node_ID total_number_of_ID
-# Student: Elmar Hajizada, Dennis Dubrefjord
-# ------------------------------------------------------------------------------------------------------
 import traceback
 import ast
 import sys
@@ -30,26 +23,51 @@ try:
     # You will probably need to modify them
     # ------------------------------------------------------------------------------------------------------
     
+
+    def check_pending_requests(board, queue, entry_sequence, element=None):
+        if entry_sequence in queue:
+            if queue[entry_sequence] == "delete":
+                # ignore query and delete pending request from queue
+                del queue[entry_sequence]
+                return board
+
+            elif queue[entry_sequence][0] == "modify":
+                # add element with modified value 
+                modified_element = queue[entry_sequence][1]
+                board[entry_sequence] = modified_element
+                # delete pending request from query
+                del queue[entry_sequence]
+                return board
+        else:
+            # if there is no pending request for given entry sequence
+            return False
+           
+
+
     #This functions will add an new element
     def add_new_element_to_store(entry_sequence, element, is_propagated_call=False):
-        global board, node_id
+        global board, node_id, queue
         success = False
         try:
-           #if element id is not in the board, we can add new element to the dictionary, with new ID, entry sequence.
-           if entry_sequence not in board:
-               # assigning new entry element to new key value of dictionary.
-                board[entry_sequence] = element
-                success = True
-           else:
-                # print("entry_sequence is ", entry_sequence)
-                board[entry_sequence] = element
+
+            # means we did not find any pending request so we can continue adding new element
+            pending_request = check_pending_requests(board, queue, entry_sequence)
+            # if pending request is false means, we do not have any pending request in the queue regarding to that entry sequency
+            if pending_request == False:
+                #if element id is not in the board, we can add new element to the dictionary, with new ID, entry sequence.
+                if entry_sequence not in board:
+                # assigning new entry element to new key value of dictionary.
+                    board[entry_sequence] = element
+                    success = True
+            else:
+                board = val
 
         except Exception as e:
             print e
         return success
 
     def modify_element_in_store(entry_sequence, modified_element, is_propagated_call = False):
-        global board, node_id
+        global board, node_id, queue
         success = False
         try:
             '''
@@ -57,7 +75,10 @@ try:
             in the dictionary, and we assign new value to the key(ID) of dictionary. Now new entry will be modified_element
             for corresponding key(ID).
             ''' 
-            board[entry_sequence] = modified_element
+            if entry_sequence in board:
+                board[entry_sequence] = modified_element
+            else:
+                queue[entry_sequence] = ["modify", modified_element]
 
             success = True
         except Exception as e:
@@ -65,12 +86,14 @@ try:
         return success
 
     def delete_element_from_store(entry_sequence, is_propagated_call = False):
-        global board, node_id, delete_key
+        global board, node_id, delete_key, queue
         success = False
         try:
-            
             # We are deleting specific ID from dictionary.
-            del board[entry_sequence]
+            if entry_sequence  in board:
+                del board[entry_sequence]
+            else:
+                queue[entry_sequence] = "delete"
             
             success = True
         except Exception as e:
@@ -109,22 +132,6 @@ try:
                     print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
 
 
-    def handle_requests(queue):
-        '''
-        each path in this queue are in the format of '/propagate/<action>/<element_id>/entry'.
-        We split the paths, in order to check if the request is ADD, MODIFY or DELETE. 
-        '''        
-        print(queue)
-        for req in queue:
-            action, _id, received_id, entry = req.split('/')[2], req.split('/')[3], req.split('/')[4], req.split('/')[5]
-            # print(action, _id, entry)
-            if action == "ADD":
-                add_new_element_to_store(float(_id + received_id), entry)
-            elif action == "DELETE":
-                delete_element_from_store(float(_id))
-            elif action == "MODIFY":
-                modify_element_in_store(float(_id), entry)
-
     # ------------------------------------------------------------------------------------------------------
     # ROUTES
     # ------------------------------------------------------------------------------------------------------
@@ -140,6 +147,7 @@ try:
     @app.get('/board')
     def get_board():
         global board, node_id, delete_key, queue, count
+        print(queue)
         # print board
 
         return template('server/boardcontents_template.tpl',board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()))
@@ -150,14 +158,14 @@ try:
         Called directly when a user is doing a POST request on /board'''
         global board, node_id, local_clock
         try:
-            #get a new entry
 
             print("local clock = {}".format(local_clock))
             new_entry = request.forms.get('entry')
-            # new element ID will be the length of board. If we have IDs 0, 1, 2 in board new ID will be 3 which is 
-            # length of board. We create thread in order to propogate other vessels. We use thread,start() to spawn the
-            # thread. Post request /propogate/ADD/3 with the new entry. Post request will be describe in propogate_to_vessels 
-            # function.
+            '''
+            add element_id(local_clock) + node_id. For example if vessel one submitting its entry with logical clock 10.
+            The entry will be added to the board with id 10.1 which is (logical_clock + node_id/10). In this way if there is 
+            a concurrent updates it stays concurrent. For example vessel 1 and vessel 2 both have clock 10 and at the same time they submit an entry, then entries will be added as 10.1 and 10.2. So lower id will become first in the board. 
+            '''
             if len(board) == 0:
                 element_id = 0
             else:
@@ -177,7 +185,7 @@ try:
             print e
         # return False
 
-    @app.post('/board/<element_id>/')
+    @app.post('/board/<element_id:float>/')
     def client_action_received(element_id):
         global local_clock
         # take entry, will be needed in case of MODIFY.
@@ -194,7 +202,7 @@ try:
         option = request.forms.get('delete')
 
         # print("local clock = {}".format(local_clock))
-        print("my element id is", element_id)
+        print("element id is {} and clock id is {}".format(element_id, local_clock))
 
         # if option is 0, means we want to modify element, then we use modify_element_in_store function
         # with the new entry and element_id. We create a thread for propogation.
@@ -215,10 +223,10 @@ try:
             thread.daemon = True
             thread.start()
            
-        
+    
     @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):
-        global local_clock
+        global local_clock, concurrent_nodes
         '''
         This post request is used for the propogation purposes, and we check action if we call this post request.
         Actions can be add, delete or modify in this program. We should also cast element_id to the integer type. Because 
@@ -231,6 +239,7 @@ try:
         # print(request.fullpath)
         
         local_clock = max(local_clock, int(received_clock)) + 1
+
 
         # print("local clock = {} and received clock = {}".format(local_clock, received_clock))
         
@@ -249,9 +258,9 @@ try:
     # EXECUTION
     # ------------------------------------------------------------------------------------------------------
     def main():
-        global vessel_list, node_id, app, server_list, nodes_list, local_clock, count, queue
+        global vessel_list, node_id, app, server_list, nodes_list, local_clock, count, queue, concurrent_nodes
         
-
+        concurrent_nodes = dict()
         port = 80
         count = 0
         parser = argparse.ArgumentParser(description='Your own implementation of the distributed blackboard')
@@ -262,7 +271,7 @@ try:
         vessel_list = dict()
         server_list = list()
         nodes_list = list()
-        queue = list()
+        queue = dict()
         local_clock = node_id
         # We need to write the other vessels IP, based on the knowledge of their number
         for i in range(1, args.nbv):
