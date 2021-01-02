@@ -1,10 +1,3 @@
-# coding=utf-8
-# ------------------------------------------------------------------------------------------------------
-# TDA596 - Lab 1
-# server/server.py
-# Input: Node_ID total_number_of_ID
-# Student: Elmar Hajizada, Dennis Dubrefjord
-# ------------------------------------------------------------------------------------------------------
 import traceback
 import ast
 import sys
