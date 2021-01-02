@@ -1,7 +1,7 @@
 # Distributed Systems
 
 ### Introduction
-In this repository, I used Mininet, "instant virtual network on the laptop", to apply different distributed systems techniques such as centralized distributed system, eventual consistency, strong consistency between N number of servers.
+In this repository, I used Mininet, "instant virtual network on the laptop", to apply different distributed systems techniques such as centralized distributed system, eventual consistency, strong consistency between N number of servers. Python programming language with Bottle api has been used to apply techniques above.
 
 
 ### Centralized Blackboard - Strong consistency
@@ -45,4 +45,25 @@ In order to make system eventually consistent, logical clocks and server id has 
 * On a server:
 * Posts are ordered by (logical clock numbers, server id)
 * If two posts have the same logical clock number (it can happen when messages has been sent concurrently), system is still consistent since it will differ with sever ids.
+
+### Installation
+
+Install mininet: http://mininet.org/download/ <br/>
+For centralized blackboard:
+```sh
+$ cd .../distributed_systems
+$ sudo python lab1.py --vessels server/server.py
+```
+
+For eventually consistent blackboard:
+```sh
+$ sudo python lab1.py --vessels server/server.py
+```
+
+You can also decide number of servers that you want in your system, using *--server*:
+
+```sh
+$ sudo python lab1.py --vessels server/server.py --servers 8
+```
+
 
