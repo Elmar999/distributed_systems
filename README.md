@@ -43,8 +43,8 @@ In order to make system eventually consistent, logical clocks and server id has 
 * Each post has a logical clock number:
 * logical clcok number of a new post: the last sequence number received + 1
 * On a server:
-* Posts are ordered by (logical clock numbers, server id)
-* If two posts have the same logical clock number (it can happen when messages has been sent concurrently), system is still consistent since it will differ with sever ids.
+    * Posts are ordered by (logical clock numbers, server id)
+    * If two posts have the same logical clock number (it can happen when messages has been sent concurrently), system is still consistent since it will differ with sever ids.
 
 ### Installation
 
@@ -63,7 +63,7 @@ $ sudo python lab1.py --vessels server/server.py
 You can also decide number of servers that you want in your system, using *--server*:
 
 ```sh
-$ sudo python lab1.py --vessels server/server.py --servers 8
+$ sudo python lab1.py --vessels server/server1.py --servers 8
 ```
 
 
