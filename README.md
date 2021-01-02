@@ -60,7 +60,7 @@ For eventually consistent blackboard:
 $ sudo python lab1.py --vessels server/server.py
 ```
 
-You can also decide number of servers that you want in your system, using *--server*:
+You can also decide number of servers that you want in your system, using *--servers*:
 
 ```sh
 $ sudo python lab1.py --vessels server/server1.py --servers 8
