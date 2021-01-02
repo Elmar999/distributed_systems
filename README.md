@@ -57,7 +57,7 @@ $ sudo python lab1.py --vessels server/server.py
 
 For eventually consistent blackboard:
 ```sh
-$ sudo python lab1.py --vessels server/server.py
+$ sudo python lab1.py --vessels server/server1.py
 ```
 
 You can also decide number of servers that you want in your system, using *--servers*:
