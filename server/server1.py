@@ -16,13 +16,9 @@ try:
     app = Bottle()
 
     #board stores all message on the system 
-    board = {0 : "Welcome to Distributed Systems Course"} 
+    board = {0 : "Welcome to Distributed Systems"} 
 
-    # ------------------------------------------------------------------------------------------------------
-    # BOARD FUNCTIONS
-    # You will probably need to modify them
-    # ------------------------------------------------------------------------------------------------------
-    
+
 
     def check_pending_requests(board, queue, entry_sequence, element=None):
         if entry_sequence in queue:
@@ -134,8 +130,6 @@ try:
 
     # ------------------------------------------------------------------------------------------------------
     # ROUTES
-    # ------------------------------------------------------------------------------------------------------
-    # a single example (index) for get, and one for post
     # ------------------------------------------------------------------------------------------------------
     @app.route('/')
     def index():

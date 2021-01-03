@@ -16,7 +16,7 @@ try:
     app = Bottle()
 
     #board stores all message on the system 
-    board = {0 : "Welcome to Distributed Systems Course"} 
+    board = {0 : "Welcome to Distributed Systems"} 
 
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
@@ -195,8 +195,6 @@ try:
     # ------------------------------------------------------------------------------------------------------
     # ROUTES
     # ------------------------------------------------------------------------------------------------------
-    # a single example (index) for get, and one for post
-    # ------------------------------------------------------------------------------------------------------
     @app.route('/')
     def index():
         global board, node_id
@@ -212,9 +210,6 @@ try:
         print board
         
         random.seed(seed_number)
-        
-        # if  node_list:
-            # print(node_list)
         node_number = random.choice(list(node_list.keys()))
         check_coordinator_node(node_number)
         seed_number += 1
@@ -300,12 +295,7 @@ try:
             # contact to coordinator
             success, response = contact_vessel('10.1.0.{}'.format((str(coordinator_id))), '/board/{}/'.format(element_id), {'entry': entry, "delete": option}, 'POST')
             
-
-
-
-
-        
-
+            
     @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):
         '''
