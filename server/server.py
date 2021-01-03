@@ -1,10 +1,10 @@
-import traceback
 import ast
 import sys
 import time
 import json
 import random
 import argparse
+import traceback
 from time import sleep
 from threading import Thread
 
@@ -203,7 +203,7 @@ try:
 
         print("board")
         return template('server/index.tpl', board_title='Vessel {}'.format(node_id),
-                board_dict=sorted({"0":board,}.iteritems()), members_name_string='Dennis Dubrefjord, Elmar Hajizada')
+                board_dict=sorted({"0":board,}.iteritems()), members_name_string='')
 
 
     @app.get('/board')
